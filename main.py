@@ -50,14 +50,13 @@ def reject(message):
     raise SystemExit(message)
 
 
-def validate_diagnosis(raw):
-    """Run the bounty gate over the diagnosis; return the cleaned text.
+def check_shape(text):
+    """Enforce the bounty shape gate: 1 to LIMIT characters, one line.
 
-    The gate: 1 to LIMIT characters, not blank, a single line.
+    Returns the text unchanged when it passes; rejects otherwise.
     """
-    text = raw.strip()
     if not text:
-        reject("diagnosis is empty or only whitespace")
+        reject("diagnosis is empty")
     if "\n" in text or "\r" in text:
         reject("diagnosis must fit on one line")
     if len(text) > LIMIT:
@@ -67,27 +66,47 @@ def validate_diagnosis(raw):
     return text
 
 
+def validate_diagnosis(raw):
+    """Clean the diagnosis and run it through the shape gate."""
+    text = raw.strip()
+    if not text:
+        reject("diagnosis is empty or only whitespace")
+    return check_shape(text)
+
+
 def render_entry():
     """Return the exact bytes the entry file must hold."""
     return (validate_diagnosis(DIAGNOSIS) + "\n").encode("utf-8")
 
 
-def main():
+def check_deterministic():
+    """Render twice and require identical bytes; return the agreed render."""
     first = render_entry()
     second = render_entry()
     if first != second:
         reject("nondeterministic render: two passes disagree")
+    return first
+
+
+def write_entry(payload):
+    """Write payload to entry.txt and verify the bytes on disk match."""
     folder = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
     os.makedirs(folder, exist_ok=True)
     target = os.path.join(folder, "entry.txt")
     with open(target, "wb") as handle:
-        handle.write(first)
+        handle.write(payload)
     with open(target, "rb") as handle:
         written = handle.read()
-    if written != first:
+    if written != payload:
         reject("written entry.txt does not match the rendered bytes")
-    print(f"wrote {target}: {len(first.decode('utf-8').strip())} characters, "
-          f"{len(first)} bytes")
+    return target
+
+
+def main():
+    payload = check_deterministic()
+    target = write_entry(payload)
+    print(f"wrote {target}: {len(payload.decode('utf-8').strip())} characters, "
+          f"{len(payload)} bytes")
 
 
 if __name__ == "__main__":
